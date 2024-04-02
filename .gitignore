@@ -1,0 +1,22 @@
+# Dependency directory
+node_modules
+
+# Editors
+.idea
+.vscode
+*.iml
+
+# Ignore cache files
+tsconfig.tsbuildinfo
+.rollup.cache
+
+# Ignore log files
+**/*.log
+
+# Ignore build files
+**/dist
+**/dist-pkg
+**/target
+
+# Ignore Jest coverage report files
+coverage

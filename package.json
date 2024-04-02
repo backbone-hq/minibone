@@ -1,0 +1,86 @@
+{
+  "name": "minibone",
+  "version": "0.5.0",
+  "description": "A compact, versatile, and misuse-resistant library for end-to-end-encryption",
+  "keywords": [
+    "security",
+    "webcrypto",
+    "crypto",
+    "cryptography",
+    "encryption",
+    "end-to-end-encryption"
+  ],
+  "main": "dist",
+  "type": "module",
+  "repository": "https://github.com/backbone-hq/minibone",
+  "author": "Backbone Founders <root@backbone.dev>",
+  "license": "Apache-2.0",
+  "files": [
+    "dist/*"
+  ],
+  "exports": {
+    ".": "./dist/bundle.js"
+  },
+  "dependencies": {
+    "@rollup/plugin-commonjs": "^25.0.7",
+    "cbor-x": "^1.5.9",
+    "detect-node": "^2.1.0"
+  },
+  "devDependencies": {
+    "@rollup/plugin-node-resolve": "^15.2.3",
+    "@types/detect-node": "^2.0.2",
+    "@types/jest": "^29.5.12",
+    "esbuild": "^0.20.2",
+    "jest": "^29.7.0",
+    "jest-environment-jsdom": "^29.7.0",
+    "prettier": "^3.2.5",
+    "rimraf": "^5.0.5",
+    "rollup": "^4.13.0",
+    "rollup-plugin-dts": "^6.1.0",
+    "rollup-plugin-esbuild": "^6.1.1",
+    "rollup-plugin-terser": "^7.0.2",
+    "ts-jest": "^29.1.2",
+    "tslib": "^2.6.2",
+    "typescript": "^5.4.2"
+  },
+  "scripts": {
+    "clean": "rimraf ./coverage ./dist ./.rollup.cache ./tsconfig.tsbuildinfo",
+    "build": "yarn clean && rollup -c rollup.config.js",
+    "format": "prettier 'src/**/*.ts' 'tests/**/*.ts' --write",
+    "coverage": "jest --coverage",
+    "test": "jest"
+  },
+  "prettier": {
+    "semi": false,
+    "tabWidth": 2,
+    "useTabs": false,
+    "singleQuote": true,
+    "trailingComma": "none",
+    "bracketSpacing": true,
+    "printWidth": 120
+  },
+  "jest": {
+    "verbose": true,
+    "projects": [
+      {
+        "displayName": "node",
+        "preset": "ts-jest",
+        "testEnvironment": "node",
+        "testMatch": [
+          "**/*.test.ts"
+        ]
+      },
+      {
+        "displayName": "jsdom",
+        "preset": "ts-jest",
+        "testEnvironment": "jsdom",
+        "testMatch": [
+          "**/*.test.ts"
+        ],
+        "moduleNameMapper": {
+          "cbor-x": "<rootDir>/node_modules/cbor-x/dist/index.min.js"
+        }
+      }
+    ]
+  }
+}
