@@ -79,7 +79,7 @@ const fetched: Uint8Array = await virtualBackend.fetchData(minibone.uid)
 const decryptedData: any = await loadedMinibone.decrypt(fetched)
 ```
 
-### ⚠ Caveats
+### 📢 Caveats
 
 Minibone is designed to be simple to use and difficult to abuse. That said, there are a few important aspects to keep in mind when interfacing with Minibone.
 

@@ -22,11 +22,11 @@
     ".": "./dist/bundle.js"
   },
   "dependencies": {
-    "@rollup/plugin-commonjs": "^25.0.7",
     "cbor-x": "^1.5.9",
     "detect-node": "^2.1.0"
   },
   "devDependencies": {
+    "@rollup/plugin-commonjs": "^25.0.7",
     "@rollup/plugin-node-resolve": "^15.2.3",
     "@types/detect-node": "^2.0.2",
     "@types/jest": "^29.5.12",
