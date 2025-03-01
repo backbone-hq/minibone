@@ -19,11 +19,16 @@ jobs:
           node-version: '20'
           registry-url: https://registry.npmjs.org/
 
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 8
+
       - name: Install dependencies
-        run: yarn install --frozen-lockfile
+        run: pnpm install --frozen-lockfile
 
       - name: Build package
-        run: yarn build
+        run: pnpm build
 
       - name: Publish package
         env:
