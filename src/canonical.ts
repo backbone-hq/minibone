@@ -1,5 +1,11 @@
 import type { Serializable } from './types'
 
+const encodeUint32 = (value: number): Uint8Array => {
+  const bytes = new Uint8Array(4)
+  new DataView(bytes.buffer).setUint32(0, value, true)
+  return bytes
+}
+
 export function encodeCanonical(input: Serializable | Serializable[]): Uint8Array {
   const encoder = new TextEncoder()
 
@@ -17,7 +23,7 @@ export function encodeCanonical(input: Serializable | Serializable[]): Uint8Arra
     }
 
     const header = new Uint8Array([0x02])
-    const number = new Uint8Array(new Uint32Array([input]).buffer)
+    const number = encodeUint32(input)
     return new Uint8Array([...header, ...number])
   }
 
@@ -27,7 +33,7 @@ export function encodeCanonical(input: Serializable | Serializable[]): Uint8Arra
     }
 
     const header = new Uint8Array([0x10])
-    const length = new Uint8Array(new Uint32Array([input.length]).buffer)
+    const length = encodeUint32(input.length)
     return new Uint8Array([...header, ...length, ...input])
   }
 
@@ -39,7 +45,7 @@ export function encodeCanonical(input: Serializable | Serializable[]): Uint8Arra
     }
 
     const header = new Uint8Array([0x11])
-    const length = new Uint8Array(new Uint32Array([encodedString.length]).buffer)
+    const length = encodeUint32(encodedString.length)
     return new Uint8Array([...header, ...length, ...encodedString])
   }
 
@@ -57,7 +63,7 @@ export function encodeCanonical(input: Serializable | Serializable[]): Uint8Arra
     }
 
     const header = new Uint8Array([0x20])
-    const length = new Uint8Array(new Uint32Array([elements.length]).buffer)
+    const length = encodeUint32(elements.length)
     const elementsArray = Uint8Array.from(elements.flatMap((e) => Array.from(e)))
     return new Uint8Array([...header, ...length, ...elementsArray])
   }

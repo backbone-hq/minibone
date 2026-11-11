@@ -1,4 +1,6 @@
 import { TextEncoder, TextDecoder } from 'util'
+import { readFileSync } from 'fs'
+import { join } from 'path'
 Object.assign(global, { TextEncoder, TextDecoder })
 
 import Minibone from '../src'
@@ -12,14 +14,36 @@ const data = {
   bytes: new Uint8Array([6, 9, 4, 2, 0])
 }
 
+const uuidV4Pattern = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
+
 describe('Minibone', () => {
+  test('preserves legacy IDs after loading, rotation, and saving', async () => {
+    const fixture = JSON.parse(readFileSync(join(__dirname, 'fixtures/legacy-uuid.json'), 'utf8'))
+    const payload = Uint8Array.from(Buffer.from(fixture.payload, 'base64'))
+    const ciphertext = Uint8Array.from(Buffer.from(fixture.ciphertext, 'base64'))
+    const minibone = await Minibone.load(payload, 'minibone-secure-phrase', ['test'])
+    expect(minibone.uid).toEqual(fixture.uid)
+    expect(decodeCbor(ciphertext).v0.keyId).toEqual(fixture.keyId)
+    await expect(minibone.decrypt(ciphertext)).resolves.toEqual(data)
+
+    await minibone.rotate()
+    const rotatedCiphertext = await minibone.encrypt(data)
+    expect(decodeCbor(rotatedCiphertext).v0.keyId).toMatch(uuidV4Pattern)
+
+    const saved = await minibone.save('minibone-secure-phrase', ['test'])
+    const loaded = await Minibone.load(saved, 'minibone-secure-phrase', ['test'])
+    expect(loaded.uid).toEqual(fixture.uid)
+    await expect(loaded.decrypt(ciphertext)).resolves.toEqual(data)
+    await expect(loaded.decrypt(rotatedCiphertext)).resolves.toEqual(data)
+  })
+
   test('can encrypt and decrypt values', async () => {
     const minibone = await Minibone.create()
     const ciphertext = await minibone.encrypt(data)
     await expect(minibone.decrypt(ciphertext)).resolves.toEqual(data)
   })
 
-  test('rotation results in key change', async () => {
+  test('generates UUIDv4 IDs and changes the key on rotation', async () => {
     const minibone = await Minibone.create()
     const olderCiphertext = await minibone.encrypt(data)
     await minibone.rotate()
@@ -27,6 +51,9 @@ describe('Minibone', () => {
 
     const olderResult = decodeCbor(olderCiphertext)
     const newerResult = decodeCbor(newerCiphertext)
+    expect(minibone.uid).toMatch(uuidV4Pattern)
+    expect(olderResult.v0.keyId).toMatch(uuidV4Pattern)
+    expect(newerResult.v0.keyId).toMatch(uuidV4Pattern)
     expect(olderResult.v0.keyId).not.toEqual(newerResult.v0.keyId)
   })
 
@@ -46,6 +73,57 @@ describe('Minibone', () => {
       const miniboneImported = await Minibone.load(exported, 'minibone-secure-phrase', context)
       await expect(miniboneImported.decrypt(ciphertext)).resolves.toEqual(data)
     }
+  })
+
+  test('advances revisions on consecutive saves without reloading', async () => {
+    const minibone = await Minibone.create()
+
+    for (const revision of [1, 2]) {
+      const payload = await minibone.save('minibone-secure-phrase', ['test'])
+      const loaded = await Minibone.load(payload, 'minibone-secure-phrase', ['test'])
+      expect([minibone.revision, loaded.revision]).toEqual([revision, revision])
+    }
+  })
+
+  test('assigns distinct revisions to overlapping saves', async () => {
+    const minibone = await Minibone.create()
+    const saves = [minibone.save('minibone-secure-phrase', ['test']), minibone.save('minibone-secure-phrase', ['test'])]
+    expect(minibone.revision).toEqual(2)
+
+    const payloads = await Promise.all(saves)
+    const loaded = await Promise.all(
+      payloads.map((payload) => Minibone.load(payload, 'minibone-secure-phrase', ['test']))
+    )
+
+    expect(loaded.map((profile) => profile.revision)).toEqual([1, 2])
+    expect(minibone.revision).toEqual(2)
+  })
+
+  test('continues saving after a failed save with a gap in revisions', async () => {
+    const minibone = await Minibone.create()
+    await expect(minibone.save('minibone-secure-phrase', [1.5])).rejects.toThrow(
+      'Input is not a 32-bit unsigned integer'
+    )
+    expect(minibone.revision).toEqual(1)
+
+    const payload = await minibone.save('minibone-secure-phrase', ['test'])
+    const loaded = await Minibone.load(payload, 'minibone-secure-phrase', ['test'])
+    expect([minibone.revision, loaded.revision]).toEqual([2, 2])
+  })
+
+  test('saves a snapshot before a subsequent rotation', async () => {
+    const minibone = await Minibone.create()
+    const olderCiphertext = await minibone.encrypt(data)
+    const pendingSave = minibone.save('minibone-secure-phrase', ['test'])
+
+    await minibone.rotate()
+    expect(minibone.revision).toEqual(1)
+    const newerCiphertext = await minibone.encrypt(data)
+    const payload = await pendingSave
+    const loaded = await Minibone.load(payload, 'minibone-secure-phrase', ['test'])
+
+    await expect(loaded.decrypt(olderCiphertext)).resolves.toEqual(data)
+    await expect(loaded.decrypt(newerCiphertext)).rejects.toThrow()
   })
 
   test('can be safely merged', async () => {
@@ -77,14 +155,6 @@ describe('Minibone', () => {
     await expect(mergedMinibone.decrypt(oldCiphertext)).resolves.toEqual(data)
     await expect(mergedMinibone.decrypt(mainCipherText)).resolves.toEqual(data)
     await expect(mergedMinibone.decrypt(branchedCiphertext)).resolves.toEqual(data)
-  })
-
-  test('throws an error when trying to decrypt with an invalid key', async () => {
-    const minibone = await Minibone.create()
-    const ciphertext = await minibone.encrypt(data)
-    await minibone.rotate()
-    await minibone.rotate()
-    await expect(minibone.decrypt(ciphertext, { keyId: '1234' })).rejects.toThrow()
   })
 
   test('can encrypt and decrypt empty objects', async () => {
@@ -126,6 +196,22 @@ describe('Minibone', () => {
     const associatedData = { context: 'test' }
     const ciphertext = await minibone.encrypt(data, associatedData)
     await expect(minibone.decrypt(ciphertext, associatedData)).resolves.toEqual(data)
+  })
+
+  test('distinguishes falsy associated data from omission', async () => {
+    const minibone = await Minibone.create()
+    const contexts = [undefined, false, 0, '', null]
+
+    for (const associatedData of contexts) {
+      const ciphertext = await minibone.encrypt(data, associatedData)
+      for (const context of contexts) {
+        if (context === associatedData) {
+          await expect(minibone.decrypt(ciphertext, context)).resolves.toEqual(data)
+        } else {
+          await expect(minibone.decrypt(ciphertext, context)).rejects.toThrow()
+        }
+      }
+    }
   })
 
   test('throws an error when decrypting with incorrect associated data', async () => {
@@ -217,23 +303,6 @@ describe('Minibone', () => {
     await expect(miniboneImported.decrypt(ciphertext)).resolves.toEqual(data)
   })
 
-  test('can encrypt and decrypt with empty context', async () => {
-    const minibone = await Minibone.create()
-    const ciphertext = await minibone.encrypt(data)
-    const exported = await minibone.save('minibone-secure-phrase', [])
-    const miniboneImported = await Minibone.load(exported, 'minibone-secure-phrase', [])
-    await expect(miniboneImported.decrypt(ciphertext)).resolves.toEqual(data)
-  })
-
-  test('can encrypt and decrypt with extremely long context', async () => {
-    const minibone = await Minibone.create()
-    const longContext = ['a'.repeat(1024 * 1024)] // 1 MB context
-    const ciphertext = await minibone.encrypt(data)
-    const exported = await minibone.save('minibone-secure-phrase', longContext)
-    const miniboneImported = await Minibone.load(exported, 'minibone-secure-phrase', longContext)
-    await expect(miniboneImported.decrypt(ciphertext)).resolves.toEqual(data)
-  })
-
   test('can encrypt and decrypt with extremely long context', async () => {
     const minibone = await Minibone.create()
     const longContext = ['a'.repeat(1024 * 1024)] // 1 MB context
@@ -302,6 +371,11 @@ describe('Minibone', () => {
     expect(() => encodeCanonical(4294967296)).toThrow('Input is not a 32-bit unsigned integer')
   })
 
+  test('encodes a string with its UTF-8 byte length correctly', () => {
+    const encoded = encodeCanonical('é')
+    expect(encoded).toEqual(new Uint8Array([0x11, 0x02, 0x00, 0x00, 0x00, 0xc3, 0xa9]))
+  })
+
   test('encodes a Uint8Array correctly', () => {
     const data = new Uint8Array([1, 2, 3, 4, 5])
     const encoded = encodeCanonical(data)
@@ -324,19 +398,6 @@ describe('Minibone', () => {
     )
   })
 
-  test('throws an error when encoding a negative number', () => {
-    expect(() => encodeCanonical(-1)).toThrow('Input is not a 32-bit unsigned integer')
-  })
-
-  test('throws an error when encoding a number greater than 4294967295', () => {
-    expect(() => encodeCanonical(4294967296)).toThrow('Input is not a 32-bit unsigned integer')
-  })
-
-  test('throws an error when encoding a Uint8Array exceeding the 32-bit integer limit', () => {
-    const largeUint8Array = new Uint8Array(4294967296)
-    expect(() => encodeCanonical(largeUint8Array)).toThrow('Uint8Array length exceeds 32-bit integer limit')
-  })
-
   test('throws an error when loading with an unrecognized envelope payload', async () => {
     const invalidEnvelope = { invalid: true }
     const encodedInvalidEnvelope = encodeCbor(invalidEnvelope)
@@ -357,7 +418,7 @@ describe('Minibone', () => {
     }
     const encodedEnvelope = encodeCbor(envelope)
     await expect(Minibone.load(encodedEnvelope, 'minibone-secure-phrase', ['test'])).rejects.toThrow(
-      'The operation failed for an operation-specific reason'
+      /Failed to load Minibone profile/
     )
   })
 

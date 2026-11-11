@@ -86,7 +86,11 @@ class Minibone {
       v0Envelope.ciphertext,
       bundleKey,
       encodedAssociatedData
-    )
+    ).catch((error) => {
+      throw new Error(
+        `Failed to load Minibone profile. This is often caused by an incorrect secret phrase or context. Original error: ${error.message}`
+      )
+    })
     const bundle: Bundle = decodeCbor(encodedBundle)
 
     if (!bundle.v0) {
@@ -94,17 +98,13 @@ class Minibone {
     }
 
     const v0Bundle: BundleV0 = bundle.v0
-    return new Minibone(v0Envelope.revisionrevision, v0Bundle.uid, v0Bundle.keys)
+    return new Minibone(v0Envelope.revision, v0Bundle.uid, v0Bundle.keys)
   }
 
   /**
    * Save a minibone instance's state.
    */
   public async save(secret: Secret, context?: Serializable[]): Promise<Uint8Array> {
-    const masterKey: Uint8Array = await deriveMasterKeyFromSecret(secret, context)
-    const [rawBundleKey] = await deriveMatryoshkaKeys(masterKey, [32])
-    const bundleKey: CryptoKey = await loadEncryptionKey(rawBundleKey)
-
     const v0Bundle: BundleV0 = {
       uid: this.uid,
       keys: this.keys
@@ -114,10 +114,14 @@ class Minibone {
       v0: v0Bundle
     }
 
-    const newRevision = this.revision + 1
+    const newRevision = ++this.revision
 
     const encodedBundle: Uint8Array = encodeCbor(bundle)
     const encodedAssociatedData: Uint8Array = encodeCanonical([newRevision])
+
+    const masterKey: Uint8Array = await deriveMasterKeyFromSecret(secret, context)
+    const [rawBundleKey] = await deriveMatryoshkaKeys(masterKey, [32])
+    const bundleKey: CryptoKey = await loadEncryptionKey(rawBundleKey)
     const [bundleIv, bundleCiphertext] = await encryptData(encodedBundle, bundleKey, encodedAssociatedData)
 
     const v0Envelope: EnvelopeV0 = {
@@ -152,7 +156,8 @@ class Minibone {
     const key = this.latestKey()
     const encryptionKey = await loadEncryptionKey(key.value)
 
-    const [iv, ciphertext] = await encryptData(encodedData, encryptionKey, associatedData && encodeCbor(associatedData))
+    const encodedAssociatedData = associatedData === undefined ? undefined : encodeCbor(associatedData)
+    const [iv, ciphertext] = await encryptData(encodedData, encryptionKey, encodedAssociatedData)
 
     const encryptedV0: EncryptedV0 = { keyId: key.id, iv, ciphertext }
     const encrypted: Encrypted = { v0: encryptedV0 }
@@ -174,12 +179,17 @@ class Minibone {
     const key = this.getKey(encryptedV0.keyId)
     const decryptionKey = await loadDecryptionKey(key.value)
 
+    const encodedAssociatedData = associatedData === undefined ? undefined : encodeCbor(associatedData)
     const encodedData = await decryptData(
       encryptedV0.iv,
       encryptedV0.ciphertext,
       decryptionKey,
-      associatedData && encodeCbor(associatedData)
-    )
+      encodedAssociatedData
+    ).catch((error) => {
+      throw new Error(
+        `Decryption failed. This is often caused by incorrect 'associatedData' or an invalid decryption key. Original error: ${error.message}`
+      )
+    })
 
     return decodeCbor(encodedData)
   }

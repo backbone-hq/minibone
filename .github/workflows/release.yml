@@ -15,7 +15,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@master
+        uses: actions/checkout@v4
 
       - name: Setup node
         uses: actions/setup-node@v4
@@ -23,16 +23,20 @@ jobs:
           node-version: '22'
           registry-url: https://registry.npmjs.org/
 
+      - name: Update npm for trusted publishing
+        run: npm install --global npm@11.6.1
+
       - name: Setup pnpm
-        uses: pnpm/action-setup@v2
-        with:
-          version: latest
+        uses: pnpm/action-setup@v4
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
       - name: Build package
         run: pnpm build
+
+      - name: Test built package
+        run: pnpm test:package
 
       - name: Publish package
         run: npm publish --access public

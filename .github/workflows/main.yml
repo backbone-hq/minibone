@@ -21,9 +21,7 @@ jobs:
           node-version: '20'
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v2
-        with:
-          version: 8
+        uses: pnpm/action-setup@v4
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -33,3 +31,9 @@ jobs:
 
       - name: Test repository
         run: pnpm test
+
+      - name: Build package
+        run: pnpm build
+
+      - name: Test built package
+        run: pnpm test:package

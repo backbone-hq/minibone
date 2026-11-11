@@ -1,5 +1,5 @@
 import isNode from 'detect-node'
-const crypto = isNode ? require('crypto') : window.crypto
+const crypto = isNode ? require('crypto') : globalThis.crypto
 
 import type { Serializable, Secret } from './types'
 import { encodeCanonical } from './canonical'
@@ -34,10 +34,12 @@ export const generateRandomBytes = (length: number): Uint8Array => {
 
 export const generateUUID = async () => {
   const bytes = generateRandomBytes(16)
+  bytes[6] = (bytes[6] & 0x0f) | 0x40
+  bytes[8] = (bytes[8] & 0x3f) | 0x80
   return [...bytes]
     .map((b) => b.toString(16).padStart(2, '0'))
     .join('')
-    .replace(/(.{8})(.{4})(.{4})(.{4})(.{12})/, '$1-$2-4$3-$4-$5')
+    .replace(/(.{8})(.{4})(.{4})(.{4})(.{12})/, '$1-$2-$3-$4-$5')
 }
 
 export const generateKeyBytes = async (): Promise<Uint8Array> => {
@@ -58,7 +60,11 @@ export const encryptData = async (
   associatedData?: Uint8Array
 ): Promise<[Uint8Array, Uint8Array]> => {
   const iv = crypto.getRandomValues(new Uint8Array(12))
-  const buffer = await crypto.subtle.encrypt({ ...ENCRYPTION_ALGORITHM, iv, additionalData: associatedData }, key, data)
+  const algorithm: any = { ...ENCRYPTION_ALGORITHM, iv }
+  if (associatedData) {
+    algorithm.additionalData = associatedData
+  }
+  const buffer = await crypto.subtle.encrypt(algorithm, key, data)
   return [iv, new Uint8Array(buffer)]
 }
 
@@ -68,11 +74,11 @@ export const decryptData = async (
   key: CryptoKey,
   associatedData?: Uint8Array
 ): Promise<Uint8Array> => {
-  const buffer = await crypto.subtle.decrypt(
-    { ...ENCRYPTION_ALGORITHM, iv, additionalData: associatedData },
-    key,
-    ciphertext
-  )
+  const algorithm: any = { ...ENCRYPTION_ALGORITHM, iv }
+  if (associatedData) {
+    algorithm.additionalData = associatedData
+  }
+  const buffer = await crypto.subtle.decrypt(algorithm, key, ciphertext)
   return new Uint8Array(buffer)
 }
 
